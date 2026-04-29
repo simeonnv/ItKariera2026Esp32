@@ -1,0 +1,10 @@
+[toolchain]
+channel = "esp"
+targets = ["xtensa-esp32-none-elf"]
+components = ["rust-src", "rustfmt", "clippy"]
+
+[unstable]
+build-std = ["core", "alloc"]
+
+[target.xtensa-esp32-none-elf]
+linker = "xtensa-esp32-elf-gcc"

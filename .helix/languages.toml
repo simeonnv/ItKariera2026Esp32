@@ -1,0 +1,11 @@
+[[language]]
+name = "rust"
+language-servers = ["rust-analyzer"]
+
+[language-server.rust-analyzer.config]
+checkOnSave = { command = "check", allTargets = false, extraArgs = ["-Zbuild-std=core,alloc"] }
+check = { command = "check", allTargets = false, extraArgs = ["-Zbuild-std=core,alloc"] }
+cargo = { target = "xtensa-esp32-none-elf", buildOutDir = true }
+procMacro = { enable = true }
+linkedProjects = []
+files = { excludeDirs = [] }
