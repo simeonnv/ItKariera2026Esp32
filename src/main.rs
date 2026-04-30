@@ -55,32 +55,27 @@ use gc9a01::mode::DisplayConfiguration;
 use gc9a01::prelude::{DisplayResolution240x240, DisplayRotation, SPIInterface};
 use static_cell::StaticCell;
 
-static TIMERS: StaticCell<[OneShotTimer<Blocking>; 1]> = StaticCell::new();
+// static TIMERS: StaticCell<[OneShotTimer<Blocking>; 1]> = StaticCell::new();
 // static VIBRATION: StaticCell<Output> = StaticCell::new();
 // static RTC: StaticCell<Rtc> = StaticCell::new();
 esp_bootloader_esp_idf::esp_app_desc!();
 
-/// Run the OS
-///
-/// We have two task spawners, a low priority one and a high prio one which responds to
-/// things like buttons.
 #[main]
-async fn main(low_prio_spawner: Spawner) {
+async fn main(_low_prio_spawner: Spawner) {
     let peripherals = esp_hal::init(esp_hal::Config::default().with_cpu_clock(CpuClock::_80MHz));
     esp_alloc::heap_allocator!(size: 73728);
-    info!("mrazq mnegri");
-
-    // let rtc = RTC.init(Rtc::new(peripherals.LPWR));
 
     let mut delay = Delay::new();
     let address = 0x1E;
 
     const REG_CTRL_REG1: u8 = 0x20;
     const REG_CTRL_REG3: u8 = 0x22;
+    const REG_CTRL_REG5: u8 = 0x24;
     const REG_OUT_X_L: u8 = 0x28;
 
+    const SENSITIVITY_4G: f32 = 6842.0;
+
     // 0011110b
-    let mut buffer = [0_u8; 600];
     let i2c_config = I2cConfig::default()
         .with_frequency(Rate::from_khz(10))
         .with_timeout(BusTimeout::Maximum);
@@ -91,41 +86,9 @@ async fn main(low_prio_spawner: Spawner) {
 
     i2c.write(address, &[REG_CTRL_REG1, 0x70]).unwrap();
     i2c.write(address, &[REG_CTRL_REG3, 0x00]).unwrap();
+    i2c.write(address, &[REG_CTRL_REG5, 0x40]).unwrap();
     delay.delay_ms(20_u32);
     let mut data = [0_u8; 6];
-
-    // loop {
-    //     match i2c.write_read(address, &[REG_OUT_X_L | 0x80], &mut data) {
-    //         Ok(_) => {
-    //             use micromath::F32Ext;
-
-    //             let x = i16::from_le_bytes([data[0], data[1]]) as f32;
-    //             let y = i16::from_le_bytes([data[2], data[3]]) as f32;
-    //             let z = i16::from_le_bytes([data[4], data[5]]) as f32;
-
-    //             let pitch = (-x).atan2((y * y + z * z).sqrt()) * 180.0 / PI;
-    //             let roll = y.atan2(z) * 180.0 / PI;
-
-    //             // 2. Calculate Yaw (Heading)
-    //             let mut yaw = y.atan2(x) * 180.0 / PI;
-    //             if yaw < 0.0 {
-    //                 yaw += 360.0;
-    //             }
-
-    //             info!("Yaw: {}°, Pitch: {}°, Roll: {}°", yaw, pitch, roll);
-
-    //             // info!("Magnetometer Data: x: {}, y: {}, z: {}", x, y, z);
-    //         }
-    //         Err(e) => info!("Read Error: {:?}", e),
-    //     }
-    // }
-
-    // for address in 1..=127 {
-    //     match i2c.write(address, &[]) {
-    //         Ok(_) => info!("Found device at address: 0x{:02X}", address),
-    //         Err(_) => {} // No device at this address, move on
-    //     }
-    // }
 
     let spi_bus = Spi::new(
         peripherals.SPI2,
@@ -161,44 +124,13 @@ async fn main(low_prio_spawner: Spawner) {
     display_driver.clear();
     info!("display setup");
 
-    Line::new(Point::new(0, 0), Point::new(200, 200))
-        .into_styled(PrimitiveStyle::with_stroke(Rgb565::GREEN, 10))
-        .draw(&mut display_driver)
-        .unwrap();
-
-    // let circle_style = PrimitiveStyle::with_fill(Rgb565::RED);
-    // Circle::new(Point::new(80, 80), 80)
-    //     .into_styled(circle_style)
-    //     .draw(&mut display_driver) // Note: draw into the buffered driver
-    //     .unwrap();
-
-    // let text_style = MonoTextStyle::new(&FONT_6X10, Rgb565::BLUE);
-    // Text::new("Hello Rust!", Point::new(40, 120), text_style)
-    //     .draw(&mut display_driver)
-    //     .unwrap();
-
     display_driver.flush().ok();
     info!("display flush");
-
-    // let i2c = i2c::master:: :::new(peripherals.i2c0, i2c_sda, i2c_scl, &i2c::I2cConfig::new())?;
-    // i2c::master:c:
-    // let wakeup_pins = &mut [(&mut io.pins.gpio7.into_ref(), WakeupLevel::Low)];
-    // let rtcio = RtcioWakeupSource::new(wakeup_pins);
-    // defmt::info!("sleeping");
-    // rtc.sleep_light(&[&rtcio]);
-    // defmt::info!("waking up");
-
-    // let embassy_timers = {
-    //     let timg0 = TimerGroup::new(peripherals.TIMG0);
-    //     let timers = [OneShotTimer::new(timg0.timer0)];
-    //     TIMERS.init(timers)
-    // };
 
     // esp_hal_embassy::init(embassy_timers);
 
     defmt::info!("setting global time forever");
 
-    // Define screen constants
     let center = Point::new(120, 120);
     let arrow_length = 80.0f32;
 
@@ -207,17 +139,42 @@ async fn main(low_prio_spawner: Spawner) {
             Ok(_) => {
                 use micromath::F32Ext;
 
-                let x = i16::from_le_bytes([data[0], data[1]]) as f32;
-                let y = i16::from_le_bytes([data[2], data[3]]) as f32;
-                let z = i16::from_le_bytes([data[4], data[5]]) as f32;
-                info!("x: {} y: {} z: {}", x, y, z);
+                let raw_x = i16::from_le_bytes([data[0], data[1]]) as f32;
+                let raw_y = i16::from_le_bytes([data[2], data[3]]) as f32;
+                let raw_z = i16::from_le_bytes([data[4], data[5]]) as f32;
 
-                let yaw_rad = y.atan2(x);
-                let end_x = 120.0 + arrow_length * yaw_rad.cos();
-                let end_y = 120.0 + arrow_length * yaw_rad.sin();
+                // 1. Scale raw data to Gauss
+
+                let x = raw_x / SENSITIVITY_4G;
+                let y = raw_y / SENSITIVITY_4G;
+                let z = raw_z / SENSITIVITY_4G;
+
+                info!("x: {}, y: {}m z: {}", x, y, z);
+
+                let x_offset = -0.1897;
+                let y_offset = -0.5750;
+
+                let cal_x = x - x_offset;
+                let cal_y = y - y_offset;
+
+                let mut yaw_rad = cal_y.atan2(cal_x) + core::f32::consts::PI;
+                // let mut yaw = yaw_rad * (180.0 / core::f32::consts::PI);
+
+                // if yaw < 0.0 {
+                //     yaw += 360.0;
+                // }
+
+                if yaw_rad < 0.0 {
+                    yaw_rad += core::f32::consts::PI * 2.;
+                }
+
+                // info!("Yaw: grad: {} rad: {}°", yaw, yaw_rad);
+
+                let end_x = (center.x as f32) + arrow_length * yaw_rad.cos();
+                let end_y = (center.y as f32) + arrow_length * yaw_rad.sin();
                 let end_point = Point::new(end_x as i32, end_y as i32);
 
-                display_driver.clear(); // Clear buffer
+                display_driver.clear();
 
                 Circle::new(center - Point::new(3, 3), 6)
                     .into_styled(PrimitiveStyle::with_fill(Rgb565::WHITE))
@@ -229,8 +186,27 @@ async fn main(low_prio_spawner: Spawner) {
                     .draw(&mut display_driver)
                     .unwrap();
 
+                let text_style = MonoTextStyle::new(&FONT_6X10, Rgb565::BLUE);
+
+                Text::new("N", Point::new(120, 10), text_style)
+                    .draw(&mut display_driver)
+                    .unwrap();
+
+                Text::new("E", Point::new(230, 120), text_style)
+                    .draw(&mut display_driver)
+                    .unwrap();
+
+                Text::new("W", Point::new(0, 120), text_style)
+                    .draw(&mut display_driver)
+                    .unwrap();
+
+                Text::new("S", Point::new(120, 230), text_style)
+                    .draw(&mut display_driver)
+                    .unwrap();
+
                 display_driver.flush().ok();
             }
+
             Err(e) => info!("Read Error: {:?}", e),
         }
     }
